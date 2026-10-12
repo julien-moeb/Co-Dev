@@ -98,6 +98,7 @@ button.row:active{background:var(--press)}
 .row-main{flex:1;min-width:0}
 .row-s{font-size:13px;line-height:18px;letter-spacing:-.08px;color:var(--label2);margin-top:2px}
 .row.txt{font-size:16px;line-height:21px;letter-spacing:-.32px;align-items:flex-start}
+.row.off{color:var(--label3)} .row.off .row-s{color:var(--label3)}
 .row.center{justify-content:center;text-align:center}
 .row.total .row-main,.row.total .val{font-weight:600;color:var(--label)}
 .ell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -210,8 +211,8 @@ var PCT=[10,20,5,35,15,15];
 var DITP={45:[5,14,4,14,3,5],60:[10,12,5,20,6,7],75:[10,20,5,20,10,10],90:[14,20,8,25,8,15],120:[14,30,10,35,10,21]};
 /* Inclusion et cueillette comprises : étapes retranchées selon le référentiel (chaque durée reprend les étapes de la durée inférieure).
    1 h 15 : le support affiche 45 min d'étapes, incohérent avec 75 - 15 ; on retient la cascade (étapes de la séance d'1 h).
-   45 min : non prévu par le support, réduction proportionnelle à 30 min. */
-var DITP_C={45:[4,9,3,9,2,3],60:[3,15,4,15,3,5],75:[10,12,5,20,6,7],90:[10,20,5,20,10,10],120:[14,20,8,25,8,15]};
+   45 min : réservée à un groupe pérenne ; l'inclusion a déjà eu lieu ou est comptée à part, jamais retranchée. */
+var DITP_C={60:[3,15,4,15,3,5],75:[10,12,5,20,6,7],90:[10,20,5,20,10,10],120:[14,20,8,25,8,15]};
 var P0DEF={45:15,60:15,75:15,90:15,120:30};
 var CFG_V=2;
 var K="codev.v1.", $app=document.getElementById("app");
@@ -266,7 +267,7 @@ function distribute(weights,total,min){
   while(diff<0){var big=out.indexOf(Math.max.apply(null,out));out[big]--;diff++}
   return out;
 }
-function defaultDist(c){var d={};DUR.forEach(function(m){d[m]=(c?DITP_C:DITP)[m].slice()});return d}
+function defaultDist(c){var d={};DUR.forEach(function(m){d[m]=((c&&DITP_C[m])||DITP[m]).slice()});return d}
 function load(key,fb){try{var v=localStorage.getItem(K+key);return v?JSON.parse(v):fb}catch(e){return fb}}
 function save(key,v){try{localStorage.setItem(K+key,JSON.stringify(v))}catch(e){}}
 function drop(key){try{localStorage.removeItem(K+key)}catch(e){}}
@@ -277,6 +278,8 @@ if(!cfg||cfg.v!==CFG_V){var old=cfg||{},tt=DUR.indexOf(old.total)>=0?old.total:9
   cfg={v:CFG_V,phases:JSON.parse(JSON.stringify(DEFAULT_PHASES)),dist:defaultDist(),distC:defaultDist(true),sound:old.sound!==false,total:tt,mode:old.mode||"none",p0:P0DEF[tt]};save("cfg",cfg)}
 var S=load("session",null);
 if(S&&S.ended){S=null;drop("session")}
+if(!cfg.tone)cfg.tone="zen";
+if(cfg.total===45&&cfg.mode==="inclus")cfg.mode="sus";
 var view="home",editIdx=1,distDur=cfg.total,distMode="sans";
 
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
@@ -287,33 +290,46 @@ function clockTime(d){return d.getHours()+" h "+String(d.getMinutes()).padStart(
 function restFmt(sec){sec=Math.max(0,Math.round(sec));if(sec<120)return mmss(sec);var m=Math.ceil(sec/60),h=Math.floor(m/60),r=m%60;return h?h+" h "+String(r).padStart(2,"0"):m+" min"}
 
 /* ---------- Son ---------- */
-var bell=null,BELL_SRC=null,SILENCE="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YQQAAAAAAAAA";
-function makeBell(){
-  var sr=22050,dur=4.2,n=Math.floor(sr*dur),data=new Int16Array(n);
-  var parts=[[392,1,1.6],[784,.55,1.1],[1082,.35,.8],[1568,.22,.55],[2117,.12,.35]],strikes=[0,1.15];
-  for(var i=0;i<n;i++){
-    var t=i/sr,v=0;
-    strikes.forEach(function(st,si){var tt=t-st;if(tt<0)return;var amp=si?0.85:1,att=Math.min(1,tt/0.004);
-      parts.forEach(function(p){v+=amp*att*p[1]*Math.exp(-tt/p[2])*Math.sin(2*Math.PI*p[0]*tt)})});
-    data[i]=Math.max(-1,Math.min(1,v*0.33))*32767;
-  }
-  var buf=new ArrayBuffer(44+n*2),dv=new DataView(buf);
-  function str(o,s){for(var j=0;j<s.length;j++)dv.setUint8(o+j,s.charCodeAt(j))}
+var bell=null,SRC={},SILENCE="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YQQAAAAAAAAA";
+var TONES=[
+ {id:"zen",n:"Cloche zen",d:"Deux frappes douces et longues"},
+ {id:"carillon",n:"Carillon",d:"Trois notes claires et ascendantes"},
+ {id:"clochette",n:"Clochette d’accueil",d:"Tintements vifs et aigus, bien perçus"},
+ {id:"signal",n:"Signal",d:"Bips répétés, audibles même dans une salle bruyante"}
+];
+function strikes(t,times,parts,amp){var v=0;for(var s=0;s<times.length;s++){var tt=t-times[s];if(tt<0)continue;var att=Math.min(1,tt/0.004);
+  for(var j=0;j<parts.length;j++){var q=parts[j];v+=(amp?amp[s]:1)*att*q[1]*Math.exp(-tt/q[2])*Math.sin(2*Math.PI*q[0]*tt)}}return v}
+var SPEC={
+ zen:{dur:4.2,f:function(t){return strikes(t,[0,1.15],[[392,1,1.6],[784,.55,1.1],[1082,.35,.8],[1568,.22,.55],[2117,.12,.35]],[1,.85])}},
+ carillon:{dur:3.4,f:function(t){var v=0,seq=[[0,659],[.28,784],[.56,1047],[1.4,659],[1.68,784],[1.96,1047]];
+   for(var i=0;i<seq.length;i++){var f=seq[i][1];v+=strikes(t,[seq[i][0]],[[f,1,.9],[2*f,.45,.5],[3*f,.2,.25]])}return v}},
+ clochette:{dur:2.6,f:function(t){var f=2093;return strikes(t,[0,.2,.4,1.1,1.3,1.5],[[f,1,.6],[f*1.51,.55,.35],[f*2.66,.3,.18]])}},
+ signal:{dur:2.8,f:function(t){var g=t%0.95;if(g>0.8)return 0;var b=g%0.2;if(b>0.12)return 0;
+   var env=Math.min(1,b/0.005,(0.12-b)/0.005),f=Math.floor(g/0.2)%2?1500:1000,w=2*Math.PI*f*t;return env*(Math.sin(w)+Math.sin(3*w)/3+Math.sin(5*w)/5)}}
+};
+/* Synthèse d'une sonnerie en WAV, normalisée au même niveau sonore. */
+function synth(id){
+  var sr=22050,sp=SPEC[id],n=Math.floor(sr*sp.dur),raw=new Float32Array(n),peak=0,i;
+  for(i=0;i<n;i++){raw[i]=sp.f(i/sr);var m=Math.abs(raw[i]);if(m>peak)peak=m}
+  var k=0.92/(peak||1),buf=new ArrayBuffer(44+n*2),dv=new DataView(buf);
+  function str(o,x){for(var j=0;j<x.length;j++)dv.setUint8(o+j,x.charCodeAt(j))}
   str(0,"RIFF");dv.setUint32(4,36+n*2,true);str(8,"WAVEfmt ");dv.setUint32(16,16,true);dv.setUint16(20,1,true);dv.setUint16(22,1,true);
   dv.setUint32(24,sr,true);dv.setUint32(28,sr*2,true);dv.setUint16(32,2,true);dv.setUint16(34,16,true);str(36,"data");dv.setUint32(40,n*2,true);
-  new Int16Array(buf,44).set(data);
+  var pcm=new Int16Array(buf,44);for(i=0;i<n;i++)pcm[i]=raw[i]*k*32767;
   var bytes=new Uint8Array(buf),bin="",CH=0x8000;
-  for(var k=0;k<bytes.length;k+=CH)bin+=String.fromCharCode.apply(null,bytes.subarray(k,k+CH));
+  for(i=0;i<bytes.length;i+=CH)bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+CH));
   return "data:audio/wav;base64,"+btoa(bin);
 }
+function toneSrc(id){id=SPEC[id]?id:"zen";if(!SRC[id])SRC[id]=synth(id);return SRC[id]}
+function toneName(id){for(var i=0;i<TONES.length;i++)if(TONES[i].id===id)return TONES[i].n;return TONES[0].n}
 function getBell(){if(!bell){bell=new Audio();bell.preload="auto"}return bell}
-/* Déverrouillage audio iOS par un court silence : la cloche n'est jamais jouée à ce moment. */
+/* Déverrouillage audio iOS par un court silence : la sonnerie n'est jamais jouée à ce moment. */
 function unlockAudio(){
   try{var a=getBell();if(a.dataset.unlocked)return;a.src=SILENCE;var p=a.play();
-    var done=function(){a.dataset.unlocked="1";try{a.pause()}catch(e){};if(!BELL_SRC)BELL_SRC=makeBell();a.src=BELL_SRC;a.load()};
-    if(p&&p.then)p.then(done).catch(function(){if(!BELL_SRC)BELL_SRC=makeBell();a.src=BELL_SRC});else done()}catch(e){}
+    var done=function(){a.dataset.unlocked="1";try{a.pause()}catch(e){};a.src=toneSrc(cfg.tone);a.load()};
+    if(p&&p.then)p.then(done).catch(function(){a.src=toneSrc(cfg.tone)});else done()}catch(e){}
 }
-function ring(){try{var a=getBell();if(!BELL_SRC)BELL_SRC=makeBell();if(a.src!==BELL_SRC)a.src=BELL_SRC;a.currentTime=0;var p=a.play();if(p&&p.catch)p.catch(function(){})}catch(e){}}
+function ring(id){try{var a=getBell(),src=toneSrc(id||cfg.tone);if(a.src!==src)a.src=src;a.currentTime=0;var p=a.play();if(p&&p.catch)p.catch(function(){})}catch(e){}}
 
 /* ---------- Écran allumé ---------- */
 var lock=null;
@@ -322,6 +338,7 @@ document.addEventListener("visibilitychange",function(){if(S&&!S.ended&&document
 
 /* ---------- Plan de séance ---------- */
 function buildPlan(total,mode,p0){
+  if(total===45&&mode==="inclus")mode="sus";
   var six,list=[];
   /* Inclusion comprise : répartition retranchée du référentiel ; si la durée d'inclusion diffère de celle prévue, ajustement proportionnel. */
   if(mode==="inclus"){var b=(cfg.distC[total]||DITP_C[total]).slice(),tgt=Math.max(6,total-p0),sb=b.reduce(function(x,y){return x+y},0);six=sb===tgt?b:distribute(b,tgt)}
@@ -357,6 +374,7 @@ function sheet(o){
 }
 
 /* ---------- Vues ---------- */
+var FOOT45="Séance de 45 min, réservée à un groupe de codéveloppement pérenne : l’inclusion, le cadre d’alliance et la cueillette doivent avoir déjà été effectués, ou être comptés à part. Ils ne sont jamais retranchés des six étapes.";
 var MODES=[["none","Non incluse"],["inclus","Comprise dans la durée"],["sus","En plus de la durée"]];
 var MODE_FOOT={none:"Le groupe connaît déjà le cadre ; la séance commence à l’étape 1.",
   inclus:"L’inclusion et la cueillette sont prises sur la durée choisie ; les six étapes sont retranchées selon le référentiel DITP.",
@@ -365,16 +383,18 @@ var MODE_FOOT={none:"Le groupe connaît déjà le cadre ; la séance commence à
 function vHome(){
   var plan=buildPlan(cfg.total,cfg.mode,cfg.p0),sum=plan.reduce(function(a,p){return a+p.min},0),end=new Date(Date.now()+sum*60000);
   var h=nav({large:true,title:"Codéveloppement",right:'<button class="navbtn" data-a="settings" aria-label="Réglages">'+IC.sliders+'</button>'});
-  h+='<main class="content with-bar"><h1 class="large">Nouvelle séance</h1><p class="lede">Codéveloppement, méthode Payette et Champagne</p>';
+  h+='<main class="content with-bar"><h1 class="large">Nouvelle séance</h1><p class="lede">Déroulé conforme au référentiel de la Direction interministérielle de la transformation publique (DITP)</p>';
   if(S&&!S.ended){var cp=S.phases[S.i];
     h+=sec(null,group([row({a:"resume",label:'<span class="accent">Reprendre la séance en cours</span>',sub:(cp.n?"Étape "+cp.n:"Inclusion")+" · "+esc(cfg.phases[cp.n].t),trail:IC.chev})]))}
   h+=sec("Durée de la séance",seg("total",DUR.map(function(m){return {v:m,l:short(m)}}),cfg.total));
-  h+=sec("Inclusion, cadre d’alliance et cueillette",group(MODES.map(function(m){return row({a:"mode",v:m[0],label:m[1],trail:cfg.mode===m[0]?IC.check:"",attrs:' role="radio" aria-checked="'+(cfg.mode===m[0])+'"'})})),MODE_FOOT[cfg.mode]);
+  h+=sec("Inclusion, cadre d’alliance et cueillette",group(MODES.map(function(m){
+    if(cfg.total===45&&m[0]==="inclus")return row({cls:"off",label:m[1],sub:"Non disponible pour une séance de 45 min"});
+    return row({a:"mode",v:m[0],label:m[0]==="none"&&cfg.total===45?"Déjà effectuée (groupe pérenne)":m[0]==="sus"&&cfg.total===45?"Comptée à part":m[1],trail:cfg.mode===m[0]?IC.check:"",attrs:' role="radio" aria-checked="'+(cfg.mode===m[0])+'"'})})),cfg.total===45?FOOT45:MODE_FOOT[cfg.mode]);
   if(cfg.mode!=="none")h+=sec("Durée de l’inclusion",seg("p0",[15,20,25,30].map(function(m){return {v:m,l:m+" min"}}),cfg.p0),
-    cfg.p0===P0DEF[cfg.total]?"Durée prévue par le référentiel DITP pour une séance de "+short(cfg.total)+".":"Le référentiel DITP prévoit "+P0DEF[cfg.total]+" min pour une séance de "+short(cfg.total)+(cfg.mode==="inclus"?" ; les étapes sont ajustées proportionnellement.":"."));
+    cfg.total===45?"Temps compté à part, en plus des 45 min de séance.":cfg.p0===P0DEF[cfg.total]?"Durée prévue par le référentiel DITP pour une séance de "+short(cfg.total)+".":"Le référentiel DITP prévoit "+P0DEF[cfg.total]+" min pour une séance de "+short(cfg.total)+(cfg.mode==="inclus"?" ; les étapes sont ajustées proportionnellement.":"."));
   h+=sec("Déroulé",group(plan.map(function(p){return row({lead:'<span class="num">'+(p.n||"·")+'</span>',label:esc(cfg.phases[p.n].t),trail:'<span class="val">'+p.min+' min</span>'})})
     .concat([row({cls:"total",label:"Total",trail:'<span class="val">'+fmtDur(sum)+'</span>'})])),"Fin prévue vers "+clockTime(end)+" si la séance commence maintenant.");
-  h+=sec("Sonnerie",group([sw("sound",cfg.sound,"Sonnerie en fin d’étape"),row({a:"testbell",label:'<span class="accent">Tester la cloche</span>'})]),"Ce réglage s’applique par défaut à chaque étape et reste modifiable en cours de séance.");
+  h+=sec("Sonnerie",group([sw("sound",cfg.sound,"Sonnerie en fin d’étape"),row({a:"testbell",label:'<span class="accent">Tester la sonnerie</span>',sub:toneName(cfg.tone)})]),"Ce réglage s’applique par défaut à chaque étape et reste modifiable en cours de séance.");
   h+='</main>'+bar('<button class="cta" data-a="start">Lancer la séance</button>');
   return h;
 }
@@ -413,9 +433,10 @@ function vEnd(){
 function vSettings(){
   var h=nav({large:true,title:"Réglages",back:{a:"home",l:"Séance"}});
   h+='<main class="content"><h1 class="large">Réglages</h1>';
+  h+=sec("Sonnerie",group(TONES.map(function(t){return row({a:"tone",v:t.id,label:t.n,sub:t.d,trail:cfg.tone===t.id?IC.check:"",attrs:' role="radio" aria-checked="'+(cfg.tone===t.id)+'"'})})),"Touchez une sonnerie pour l’écouter et la choisir. Pensez à monter le volume du téléphone avant la séance.");
   h+=sec("Contenus des étapes",group(cfg.phases.map(function(p,i){return row({a:"phase",v:i,lead:'<span class="num">'+(i||"·")+'</span>',label:esc(p.t),ell:true,trail:IC.chev})})),"Titre, enjeux et repères d’animation affichés pendant la séance.");
   h+=sec("Temps",group([row({a:"dist",label:"Répartition des temps",trail:IC.chev})]),"Durée de chaque étape, pour chaque durée de séance.");
-  h+=sec(null,group([row({a:"reset",cls:"center",label:'<span class="red">Rétablir les valeurs par défaut</span>'})]));
+  h+=sec(null,group([row({a:"reset",cls:"center",label:'<span class="red">Rétablir les valeurs par défaut</span>'})]),"Contenus et durées issus du référentiel de la Direction interministérielle de la transformation publique (DITP) : support de formation des animateurs de groupe de codéveloppement, octobre 2026.");
   return h+'</main>';
 }
 
@@ -430,11 +451,12 @@ function vPhase(){
 }
 
 function vDist(){
-  var avec=distMode==="avec",d=(avec?cfg.distC:cfg.dist)[distDur],tgt=avec?distDur-P0DEF[distDur]:distDur,s=d.reduce(function(a,b){return a+b},0),ok=s===tgt;
+  var avec=distMode==="avec"&&distDur!==45,d=(avec?cfg.distC:cfg.dist)[distDur],tgt=avec?distDur-P0DEF[distDur]:distDur,s=d.reduce(function(a,b){return a+b},0),ok=s===tgt;
   var h=nav({large:true,title:"Répartition",back:{a:"settings",l:"Réglages"}});
   h+='<main class="content"><h1 class="large">Répartition</h1>';
   h+=sec("Durée de la séance",seg("dseg",DUR.map(function(m){return {v:m,l:short(m)}}),distDur));
-  h+=sec("Inclusion et cueillette",seg("dmode",[{v:"sans",l:"Non incluses"},{v:"avec",l:"Comprises"}],distMode),
+  if(distDur===45)h+=sec("Inclusion et cueillette",'',"Pour 45 min, l’inclusion n’est jamais retranchée : elle a déjà eu lieu (groupe pérenne) ou est comptée à part.");
+  else h+=sec("Inclusion et cueillette",seg("dmode",[{v:"sans",l:"Non incluses"},{v:"avec",l:"Comprises"}],distMode),
     avec?"Étapes retranchées lorsque l’inclusion ("+P0DEF[distDur]+" min) est prise sur la durée de la séance.":"Étapes lorsque l’inclusion n’est pas incluse ou s’ajoute à la séance.");
   h+=sec("Étapes",group(d.map(function(v,r){return row({lead:'<span class="num">'+(r+1)+'</span>',label:esc(cfg.phases[r+1].t),ell:true,
     trail:'<span class="sv">'+v+' min</span><div class="stepper"><button data-a="dm" data-v="'+r+'" aria-label="Retirer une minute">'+IC.minus+'</button><i></i><button data-a="dp" data-v="'+r+'" aria-label="Ajouter une minute">'+IC.plus+'</button></div>'})})),
@@ -525,11 +547,12 @@ $app.addEventListener("input",function(ev){
 $app.addEventListener("click",function(ev){
   var b=ev.target.closest("[data-a]");if(!b)return;var a=b.dataset.a,v=b.dataset.v;
   switch(a){
-    case "total":cfg.total=+v;cfg.p0=P0DEF[cfg.total];save("cfg",cfg);render();break;
+    case "total":cfg.total=+v;cfg.p0=P0DEF[cfg.total];if(cfg.total===45&&cfg.mode==="inclus")cfg.mode="sus";save("cfg",cfg);render();break;
     case "mode":cfg.mode=v;save("cfg",cfg);render();break;
     case "p0":cfg.p0=+v;save("cfg",cfg);render();break;
     case "sound":cfg.sound=!cfg.sound;save("cfg",cfg);if(cfg.sound)unlockAudio();render();break;
     case "testbell":case "bell":unlockAudio();ring();break;
+    case "tone":cfg.tone=v;save("cfg",cfg);unlockAudio();ring(v);render();break;
     case "settings":go("settings");break;
     case "home":go("home");break;
     case "start":
