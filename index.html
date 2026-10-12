@@ -206,31 +206,39 @@ button.row:active{background:var(--press)}
 "use strict";
 var DUR=[45,60,75,90,120];
 var PCT=[10,20,5,35,15,15];
+/* Répartitions du référentiel DITP (support de formation des animateurs de codéveloppement, octobre 2026). */
+var DITP={45:[5,14,4,14,3,5],60:[10,12,5,20,6,7],75:[10,20,5,20,10,10],90:[14,20,8,25,8,15],120:[14,30,10,35,10,21]};
+/* Inclusion et cueillette comprises : étapes retranchées selon le référentiel (chaque durée reprend les étapes de la durée inférieure).
+   1 h 15 : le support affiche 45 min d'étapes, incohérent avec 75 - 15 ; on retient la cascade (étapes de la séance d'1 h).
+   45 min : non prévu par le support, réduction proportionnelle à 30 min. */
+var DITP_C={45:[4,9,3,9,2,3],60:[3,15,4,15,3,5],75:[10,12,5,20,6,7],90:[10,20,5,20,10,10],120:[14,20,8,25,8,15]};
+var P0DEF={45:15,60:15,75:15,90:15,120:30};
+var CFG_V=2;
 var K="codev.v1.", $app=document.getElementById("app");
 var C=339.29;
 
 var DEFAULT_PHASES=[
- {t:"Présentation de la méthode et accord cadre d’alliance",
-  e:"Poser le cadre de confiance, de confidentialité et de bienveillance\nExpliciter les rôles : client, consultants, animateur\nPrésenter les six étapes et leur logique",
-  k:"Faire formuler les règles par le groupe plutôt que les imposer\nRecueillir l’accord explicite de chacun avant de commencer"},
- {t:"Exposé de la préoccupation",
-  e:"Le client présente une situation réelle et actuelle, dans laquelle il est impliqué et sur laquelle il peut agir\nLes consultants écoutent sans interrompre",
-  k:"Protéger la parole du client\nInviter les consultants à noter leurs questions pour l’étape suivante"},
- {t:"Questions de clarification",
-  e:"Questions d’information pour comprendre la situation et son contexte\nAucun conseil déguisé en question",
-  k:"Recadrer les questions orientées du type « ne pensez-vous pas que… »\nVeiller à une répartition équilibrée de la parole"},
+ {t:"Inclusion et cueillette",
+  e:"Accueillir les participants, préciser horaires, pauses et logistique\nRappeler les principes du codéveloppement, les six étapes et les trois rôles\nCoconstruire et valider le cadre d’alliance : règles et fonctionnement du groupe\nCueillette : chacun présente très succinctement son sujet, le groupe choisit celui qui sera traité",
+  k:"Attention à la gestion du temps dès cette étape\nUn bon sujet : situation réelle, présente, professionnelle, sur laquelle le demandeur peut agir (les 6 P)\nChoisir selon la résonance, l’urgence et l’enjeu, par vote ou discussion, puis recueillir l’accord du client\nLe cas échéant, retour du client de la séance précédente sur ses actions"},
+ {t:"Exposé de la situation / du problème",
+  e:"Le demandeur expose le sujet pour lequel il sollicite l’aide des consultants, en donnant un maximum de données\nObjectif : identifier la problématique du demandeur\nContexte, préoccupation ou projet, actions déjà engagées, puis un titre qui résume sa question",
+  k:"Reformuler si nécessaire\nInciter le demandeur à exposer simplement sa situation, qui sera dépliée lors de la clarification\nLes consultants écoutent sans interrompre"},
+ {t:"Clarification / Questions",
+  e:"Les consultants posent les questions relatives à la compréhension du problème posé\nRendre plus explicite l’implicite\nComprendre avant de décider",
+  k:"Donner au client le choix de la formule : questions au fil de l’eau ou en bloc\nIntervenir quand les questions sont inductives ou suggèrent une solution\nGérer l’équilibre de la parole ; le client peut réserver sa réponse"},
  {t:"Contrat de consultation",
-  e:"Le client précise ce qu’il attend des consultants\nLa préoccupation peut être reformulée ou recentrée",
-  k:"Faire formuler la demande en une phrase, et la noter au tableau\nVérifier que la demande est réaliste dans le temps restant"},
- {t:"Réactions, commentaires et suggestions",
-  e:"Les consultants partagent impressions, hypothèses, expériences et pistes d’action\nLe client écoute, prend des notes et ne se justifie pas",
-  k:"Rappeler au client qu’il n’a pas à répondre\nRelancer par un tour de table si la parole se concentre sur quelques personnes"},
- {t:"Synthèse et plan d’action",
-  e:"Le client retient ce qui lui est utile\nIl formule ses prochaines actions",
-  k:"Demander au moins une action concrète et datée\nLes consultants n’interviennent plus, sauf sollicitation du client"},
- {t:"Apprentissages et conclusion",
-  e:"Chacun exprime ce qu’il retire de la séance, pour lui et pour sa pratique\nRegard rapide sur le fonctionnement du groupe",
-  k:"Tour de table court, une idée par personne\nRemercier le client pour sa confiance"}
+  e:"Le client indique ses attentes aux membres du groupe et la forme de la consultation souhaitée\nSe centrer de la même manière sur l’objet de la demande\nFormuler la demande en deux lignes au plus : « Aidez-moi à… »",
+  k:"Demander si la question a évolué et laisser 2 à 3 minutes de réflexion au client\nAider à élaborer le contrat sans le faire à sa place\nVérifier que les consultants le trouvent clair et acceptent de le traiter"},
+ {t:"Consultation",
+  e:"Les consultants expriment leurs avis, partagent leurs impressions, donnent des idées et des retours d’expérience, formulent des suggestions\nSavoir distinguer ce qu’une suggestion peut apporter, oser dire, oser critiquer avec respect",
+  k:"Inviter le client à une écoute silencieuse et à la prise de notes\nRéguler les temps de parole et favoriser la divergence des apports\nÉviter le débat entre consultants : c’est au client de choisir\nPause possible avant cette étape"},
+ {t:"Synthèse et plan d’actions",
+  e:"Le client fait la synthèse de ce qu’il a reçu du groupe et pose ses premiers petits pas vers la résolution\nRecueillir des informations éparses dans une perspective pragmatique, concrète et réaliste\nÉlaborer un plan d’action",
+  k:"Laisser 2 à 3 minutes au client pour préparer sa synthèse\nLe client n’a pas à justifier ce qu’il retient ou non\nL’aider à se concentrer sur son plan et sur ce qu’il veut partager au groupe"},
+ {t:"Bilan des apprentissages et évaluations",
+  e:"Les participants échangent leurs impressions, apprentissages et appréciations\nChacun fait le bilan de ce que la séance lui a apporté\nÉvaluer et intégrer les apprentissages, distinguer l’essentiel de l’accessoire",
+  k:"Appréciation, apprentissages, application : ce que j’ai aimé, ce que j’ai appris, ce que je souhaite appliquer\nL’animateur participe au bilan, en dernier\nFermer la boucle en donnant son propre retour"}
 ];
 
 /* ---------- Icônes filaires ---------- */
@@ -258,16 +266,18 @@ function distribute(weights,total,min){
   while(diff<0){var big=out.indexOf(Math.max.apply(null,out));out[big]--;diff++}
   return out;
 }
-function defaultDist(){var d={};DUR.forEach(function(m){d[m]=distribute(PCT,m)});return d}
+function defaultDist(c){var d={};DUR.forEach(function(m){d[m]=(c?DITP_C:DITP)[m].slice()});return d}
 function load(key,fb){try{var v=localStorage.getItem(K+key);return v?JSON.parse(v):fb}catch(e){return fb}}
 function save(key,v){try{localStorage.setItem(K+key,JSON.stringify(v))}catch(e){}}
 function drop(key){try{localStorage.removeItem(K+key)}catch(e){}}
 
 var cfg=load("cfg",null);
-if(!cfg){cfg={phases:JSON.parse(JSON.stringify(DEFAULT_PHASES)),dist:defaultDist(),sound:true,total:90,mode:"none",p0:20}}
+/* Version 2 : contenus et répartitions du référentiel DITP ; les réglages antérieurs de contenus sont remplacés, les préférences conservées. */
+if(!cfg||cfg.v!==CFG_V){var old=cfg||{},tt=DUR.indexOf(old.total)>=0?old.total:90;
+  cfg={v:CFG_V,phases:JSON.parse(JSON.stringify(DEFAULT_PHASES)),dist:defaultDist(),distC:defaultDist(true),sound:old.sound!==false,total:tt,mode:old.mode||"none",p0:P0DEF[tt]};save("cfg",cfg)}
 var S=load("session",null);
 if(S&&S.ended){S=null;drop("session")}
-var view="home",editIdx=1,distDur=cfg.total;
+var view="home",editIdx=1,distDur=cfg.total,distMode="sans";
 
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 function lines(s){return String(s||"").split("\n").map(function(x){return x.trim()}).filter(Boolean)}
@@ -312,7 +322,10 @@ document.addEventListener("visibilitychange",function(){if(S&&!S.ended&&document
 
 /* ---------- Plan de séance ---------- */
 function buildPlan(total,mode,p0){
-  var base=(cfg.dist[total]||distribute(PCT,total)).slice(),six=mode==="inclus"?distribute(base,Math.max(6,total-p0)):base,list=[];
+  var six,list=[];
+  /* Inclusion comprise : répartition retranchée du référentiel ; si la durée d'inclusion diffère de celle prévue, ajustement proportionnel. */
+  if(mode==="inclus"){var b=(cfg.distC[total]||DITP_C[total]).slice(),tgt=Math.max(6,total-p0),sb=b.reduce(function(x,y){return x+y},0);six=sb===tgt?b:distribute(b,tgt)}
+  else six=(cfg.dist[total]||DITP[total]).slice();
   if(mode!=="none")list.push({n:0,min:p0});
   six.forEach(function(m,i){list.push({n:i+1,min:m})});
   return list;
@@ -346,18 +359,19 @@ function sheet(o){
 /* ---------- Vues ---------- */
 var MODES=[["none","Non incluse"],["inclus","Comprise dans la durée"],["sus","En plus de la durée"]];
 var MODE_FOOT={none:"Le groupe connaît déjà le cadre ; la séance commence à l’étape 1.",
-  inclus:"La présentation est prise sur la durée choisie ; les six étapes sont réduites d’autant.",
-  sus:"La présentation s’ajoute avant la séance ; les six étapes conservent leur durée."};
+  inclus:"L’inclusion et la cueillette sont prises sur la durée choisie ; les six étapes sont retranchées selon le référentiel DITP.",
+  sus:"L’inclusion et la cueillette s’ajoutent avant la séance ; les six étapes conservent leur durée."};
 
 function vHome(){
   var plan=buildPlan(cfg.total,cfg.mode,cfg.p0),sum=plan.reduce(function(a,p){return a+p.min},0),end=new Date(Date.now()+sum*60000);
   var h=nav({large:true,title:"Codéveloppement",right:'<button class="navbtn" data-a="settings" aria-label="Réglages">'+IC.sliders+'</button>'});
   h+='<main class="content with-bar"><h1 class="large">Nouvelle séance</h1><p class="lede">Codéveloppement, méthode Payette et Champagne</p>';
   if(S&&!S.ended){var cp=S.phases[S.i];
-    h+=sec(null,group([row({a:"resume",label:'<span class="accent">Reprendre la séance en cours</span>',sub:(cp.n?"Étape "+cp.n:"Présentation")+" · "+esc(cfg.phases[cp.n].t),trail:IC.chev})]))}
+    h+=sec(null,group([row({a:"resume",label:'<span class="accent">Reprendre la séance en cours</span>',sub:(cp.n?"Étape "+cp.n:"Inclusion")+" · "+esc(cfg.phases[cp.n].t),trail:IC.chev})]))}
   h+=sec("Durée de la séance",seg("total",DUR.map(function(m){return {v:m,l:short(m)}}),cfg.total));
-  h+=sec("Présentation et accord cadre d’alliance",group(MODES.map(function(m){return row({a:"mode",v:m[0],label:m[1],trail:cfg.mode===m[0]?IC.check:"",attrs:' role="radio" aria-checked="'+(cfg.mode===m[0])+'"'})})),MODE_FOOT[cfg.mode]);
-  if(cfg.mode!=="none")h+=sec("Durée de la présentation",seg("p0",[15,20,25,30].map(function(m){return {v:m,l:m+" min"}}),cfg.p0));
+  h+=sec("Inclusion, cadre d’alliance et cueillette",group(MODES.map(function(m){return row({a:"mode",v:m[0],label:m[1],trail:cfg.mode===m[0]?IC.check:"",attrs:' role="radio" aria-checked="'+(cfg.mode===m[0])+'"'})})),MODE_FOOT[cfg.mode]);
+  if(cfg.mode!=="none")h+=sec("Durée de l’inclusion",seg("p0",[15,20,25,30].map(function(m){return {v:m,l:m+" min"}}),cfg.p0),
+    cfg.p0===P0DEF[cfg.total]?"Durée prévue par le référentiel DITP pour une séance de "+short(cfg.total)+".":"Le référentiel DITP prévoit "+P0DEF[cfg.total]+" min pour une séance de "+short(cfg.total)+(cfg.mode==="inclus"?" ; les étapes sont ajustées proportionnellement.":"."));
   h+=sec("Déroulé",group(plan.map(function(p){return row({lead:'<span class="num">'+(p.n||"·")+'</span>',label:esc(cfg.phases[p.n].t),trail:'<span class="val">'+p.min+' min</span>'})})
     .concat([row({cls:"total",label:"Total",trail:'<span class="val">'+fmtDur(sum)+'</span>'})])),"Fin prévue vers "+clockTime(end)+" si la séance commence maintenant.");
   h+=sec("Sonnerie",group([sw("sound",cfg.sound,"Sonnerie en fin d’étape"),row({a:"testbell",label:'<span class="accent">Tester la cloche</span>'})]),"Ce réglage s’applique par défaut à chaque étape et reste modifiable en cours de séance.");
@@ -367,7 +381,7 @@ function vHome(){
 
 function vSession(){
   var ph=S.phases[S.i],c=cfg.phases[ph.n],n6=S.phases.filter(function(p){return p.n>0}).length,last=S.i>=S.phases.length-1;
-  var h=nav({back:{a:"home",l:"Accueil"},title:ph.n?"Étape "+ph.n+" sur "+n6:"Présentation"});
+  var h=nav({back:{a:"home",l:"Accueil"},title:ph.n?"Étape "+ph.n+" sur "+n6:"Inclusion et cueillette"});
   h+='<main class="content with-bar"><div class="steps">'+S.phases.map(function(p,k){return '<i class="'+(k<S.i?"done":k===S.i?"now":"")+'"></i>'}).join("")+'</div>';
   h+='<h1 class="t1">'+esc(c.t)+'</h1>';
   h+='<div class="timer" id="clk"><svg viewBox="0 0 120 120" aria-hidden="true"><defs><linearGradient id="rg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" class="s1"/><stop offset="1" class="s2"/></linearGradient></defs><circle class="tr" cx="60" cy="60" r="54"/><circle class="pr" id="pr" cx="60" cy="60" r="54" stroke-dasharray="'+C+'" stroke-dashoffset="0"/></svg>'+
@@ -407,7 +421,7 @@ function vSettings(){
 
 function vPhase(){
   var p=cfg.phases[editIdx];
-  var h=nav({title:editIdx?"Étape "+editIdx:"Présentation",back:{a:"settings",l:"Réglages"}});
+  var h=nav({title:editIdx?"Étape "+editIdx:"Inclusion",back:{a:"settings",l:"Réglages"}});
   h+='<main class="content">';
   h+=sec("Titre",group(['<div class="row field"><input type="text" id="f-t" data-f="t" value="'+esc(p.t)+'" aria-label="Titre"></div>']));
   h+=sec("Enjeux",group(['<div class="row field"><textarea id="f-e" data-f="e" aria-label="Enjeux">'+esc(p.e)+'</textarea></div>']),"Un point par ligne.");
@@ -416,14 +430,16 @@ function vPhase(){
 }
 
 function vDist(){
-  var d=cfg.dist[distDur],s=d.reduce(function(a,b){return a+b},0),ok=s===distDur;
+  var avec=distMode==="avec",d=(avec?cfg.distC:cfg.dist)[distDur],tgt=avec?distDur-P0DEF[distDur]:distDur,s=d.reduce(function(a,b){return a+b},0),ok=s===tgt;
   var h=nav({large:true,title:"Répartition",back:{a:"settings",l:"Réglages"}});
   h+='<main class="content"><h1 class="large">Répartition</h1>';
   h+=sec("Durée de la séance",seg("dseg",DUR.map(function(m){return {v:m,l:short(m)}}),distDur));
+  h+=sec("Inclusion et cueillette",seg("dmode",[{v:"sans",l:"Non incluses"},{v:"avec",l:"Comprises"}],distMode),
+    avec?"Étapes retranchées lorsque l’inclusion ("+P0DEF[distDur]+" min) est prise sur la durée de la séance.":"Étapes lorsque l’inclusion n’est pas incluse ou s’ajoute à la séance.");
   h+=sec("Étapes",group(d.map(function(v,r){return row({lead:'<span class="num">'+(r+1)+'</span>',label:esc(cfg.phases[r+1].t),ell:true,
     trail:'<span class="sv">'+v+' min</span><div class="stepper"><button data-a="dm" data-v="'+r+'" aria-label="Retirer une minute">'+IC.minus+'</button><i></i><button data-a="dp" data-v="'+r+'" aria-label="Ajouter une minute">'+IC.plus+'</button></div>'})})),
-    ok?"Total : "+s+" min, conforme à la durée de la séance.":"Total : "+s+" min pour une séance de "+distDur+" min. Ajustez de "+(distDur-s>0?"+":"−")+Math.abs(distDur-s)+" min.",ok?"":"bad");
-  h+=sec(null,'',"Si la présentation est comprise dans la durée, ces valeurs sont réduites proportionnellement au lancement.");
+    ok?"Total : "+s+" min, conforme"+(avec?" ("+short(distDur)+" moins "+P0DEF[distDur]+" min d’inclusion).":" à la durée de la séance."):"Total : "+s+" min pour "+tgt+" min attendues. Ajustez de "+(tgt-s>0?"+":"−")+Math.abs(tgt-s)+" min.",ok?"":"bad");
+  h+=sec(null,'',"Valeurs par défaut issues du référentiel DITP de formation des animateurs de codéveloppement.");
   return h+'</main>';
 }
 
@@ -509,7 +525,7 @@ $app.addEventListener("input",function(ev){
 $app.addEventListener("click",function(ev){
   var b=ev.target.closest("[data-a]");if(!b)return;var a=b.dataset.a,v=b.dataset.v;
   switch(a){
-    case "total":cfg.total=+v;save("cfg",cfg);render();break;
+    case "total":cfg.total=+v;cfg.p0=P0DEF[cfg.total];save("cfg",cfg);render();break;
     case "mode":cfg.mode=v;save("cfg",cfg);render();break;
     case "p0":cfg.p0=+v;save("cfg",cfg);render();break;
     case "sound":cfg.sound=!cfg.sound;save("cfg",cfg);if(cfg.sound)unlockAudio();render();break;
@@ -531,9 +547,10 @@ $app.addEventListener("click",function(ev){
     case "phase":editIdx=+v;go("phase");break;
     case "dist":distDur=cfg.total;go("dist");break;
     case "dseg":distDur=+v;render();break;
-    case "dm":case "dp":var r=+v,arr=cfg.dist[distDur];arr[r]=Math.max(1,Math.min(120,arr[r]+(a==="dp"?1:-1)));save("cfg",cfg);render();break;
+    case "dmode":distMode=v;render();break;
+    case "dm":case "dp":var r=+v,arr=(distMode==="avec"?cfg.distC:cfg.dist)[distDur];arr[r]=Math.max(1,Math.min(120,arr[r]+(a==="dp"?1:-1)));save("cfg",cfg);render();break;
     case "reset":sheet({title:"Rétablir les valeurs par défaut ?",msg:"Vos titres, enjeux, repères et répartitions seront remplacés.",ok:"Rétablir",
-      fn:function(){cfg.phases=JSON.parse(JSON.stringify(DEFAULT_PHASES));cfg.dist=defaultDist();save("cfg",cfg);render()}});break;
+      fn:function(){cfg.phases=JSON.parse(JSON.stringify(DEFAULT_PHASES));cfg.dist=defaultDist();cfg.distC=defaultDist(true);save("cfg",cfg);render()}});break;
   }
 });
 
