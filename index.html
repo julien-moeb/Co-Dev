@@ -290,7 +290,7 @@ function clockTime(d){return d.getHours()+" h "+String(d.getMinutes()).padStart(
 function restFmt(sec){sec=Math.max(0,Math.round(sec));if(sec<120)return mmss(sec);var m=Math.ceil(sec/60),h=Math.floor(m/60),r=m%60;return h?h+" h "+String(r).padStart(2,"0"):m+" min"}
 
 /* ---------- Son ---------- */
-var bell=null,SRC={},SILENCE="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YQQAAAAAAAAA";
+var actx=null,BUF={};
 var TONES=[
  {id:"zen",n:"Cloche zen",d:"Deux frappes douces et longues"},
  {id:"carillon",n:"Carillon",d:"Trois notes claires et ascendantes"},
@@ -307,34 +307,37 @@ var SPEC={
  signal:{dur:2.8,f:function(t){var g=t%0.95;if(g>0.8)return 0;var b=g%0.2;if(b>0.12)return 0;
    var env=Math.min(1,b/0.005,(0.12-b)/0.005),f=Math.floor(g/0.2)%2?1500:1000,w=2*Math.PI*f*t;return env*(Math.sin(w)+Math.sin(3*w)/3+Math.sin(5*w)/5)}}
 };
-/* Synthèse d'une sonnerie en WAV, normalisée au même niveau sonore. */
-function synth(id){
-  var sr=22050,sp=SPEC[id],n=Math.floor(sr*sp.dur),raw=new Float32Array(n),peak=0,i;
-  for(i=0;i<n;i++){raw[i]=sp.f(i/sr);var m=Math.abs(raw[i]);if(m>peak)peak=m}
-  var k=0.92/(peak||1),buf=new ArrayBuffer(44+n*2),dv=new DataView(buf);
-  function str(o,x){for(var j=0;j<x.length;j++)dv.setUint8(o+j,x.charCodeAt(j))}
-  str(0,"RIFF");dv.setUint32(4,36+n*2,true);str(8,"WAVEfmt ");dv.setUint32(16,16,true);dv.setUint16(20,1,true);dv.setUint16(22,1,true);
-  dv.setUint32(24,sr,true);dv.setUint32(28,sr*2,true);dv.setUint16(32,2,true);dv.setUint16(34,16,true);str(36,"data");dv.setUint32(40,n*2,true);
-  var pcm=new Int16Array(buf,44);for(i=0;i<n;i++)pcm[i]=raw[i]*k*32767;
-  var bytes=new Uint8Array(buf),bin="",CH=0x8000;
-  for(i=0;i<bytes.length;i+=CH)bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+CH));
-  return "data:audio/wav;base64,"+btoa(bin);
+/* Lecture par Web Audio : le contexte est déverrouillé au premier toucher, puis réutilisé.
+   Sur iOS, la session audio est déclarée en lecture pour ne pas dépendre du commutateur silencieux. */
+function ensureCtx(){
+  if(!actx){var AC=window.AudioContext||window.webkitAudioContext;if(!AC)return null;
+    try{if(navigator.audioSession)navigator.audioSession.type="playback"}catch(e){}
+    try{actx=new AC()}catch(e){return null}}
+  if(actx.state!=="running"){try{actx.resume()}catch(e){}}
+  return actx;
 }
-function toneSrc(id){id=SPEC[id]?id:"zen";if(!SRC[id])SRC[id]=synth(id);return SRC[id]}
-function toneName(id){for(var i=0;i<TONES.length;i++)if(TONES[i].id===id)return TONES[i].n;return TONES[0].n}
-function getBell(){if(!bell){bell=new Audio();bell.preload="auto"}return bell}
-/* Déverrouillage audio iOS par un court silence : la sonnerie n'est jamais jouée à ce moment. */
 function unlockAudio(){
-  try{var a=getBell();if(a.dataset.unlocked)return;a.src=SILENCE;var p=a.play();
-    var done=function(){a.dataset.unlocked="1";try{a.pause()}catch(e){};a.src=toneSrc(cfg.tone);a.load()};
-    if(p&&p.then)p.then(done).catch(function(){a.src=toneSrc(cfg.tone)});else done()}catch(e){}
+  var c=ensureCtx();if(!c)return;
+  try{var s=c.createBufferSource();s.buffer=c.createBuffer(1,1,22050);s.connect(c.destination);s.start(0)}catch(e){}
 }
-function ring(id){try{var a=getBell(),src=toneSrc(id||cfg.tone);if(a.src!==src)a.src=src;a.currentTime=0;var p=a.play();if(p&&p.catch)p.catch(function(){})}catch(e){}}
+function toneBuf(id){
+  id=SPEC[id]?id:"zen";if(BUF[id])return BUF[id];
+  var sr=22050,sp=SPEC[id],n=Math.floor(sr*sp.dur),buf=actx.createBuffer(1,n,sr),d=buf.getChannelData(0),peak=0,i;
+  for(i=0;i<n;i++){d[i]=sp.f(i/sr);var m=Math.abs(d[i]);if(m>peak)peak=m}
+  var k=0.95/(peak||1);for(i=0;i<n;i++)d[i]*=k;
+  return BUF[id]=buf;
+}
+function toneName(id){for(var i=0;i<TONES.length;i++)if(TONES[i].id===id)return TONES[i].n;return TONES[0].n}
+function ring(id){
+  var c=ensureCtx();if(!c)return;
+  var go=function(){try{var s=c.createBufferSource();s.buffer=toneBuf(id||cfg.tone);s.connect(c.destination);s.start(0)}catch(e){}};
+  if(c.state==="running")go();else{try{c.resume().then(go,go)}catch(e){go()}}
+}
 
 /* ---------- Écran allumé ---------- */
 var lock=null;
 function keepAwake(){try{if(navigator.wakeLock&&document.visibilityState==="visible")navigator.wakeLock.request("screen").then(function(l){lock=l}).catch(function(){})}catch(e){}}
-document.addEventListener("visibilitychange",function(){if(S&&!S.ended&&document.visibilityState==="visible")keepAwake()});
+document.addEventListener("visibilitychange",function(){if(actx&&document.visibilityState==="visible"){try{actx.resume()}catch(e){}}if(S&&!S.ended&&document.visibilityState==="visible")keepAwake()});
 
 /* ---------- Plan de séance ---------- */
 function buildPlan(total,mode,p0){
@@ -529,13 +532,35 @@ function tick(){
 }
 setInterval(tick,250);
 
+/* Report pondéré sur toutes les étapes restantes (indices : 0 inclusion, 1 exposé, 2 clarification, 3 contrat, 4 consultation, 5 synthèse, 6 bilan).
+   Temps gagné : priorité à la clarification, puis consultation, contrat et bilan ; pondéré aussi par la racine de la durée prévue (part proportionnelle atténuée).
+   Temps retranché : proportionnel à la durée prévue, ces mêmes étapes étant davantage épargnées ; plancher d'une minute par étape. */
+var W_GAIN={0:1,1:1,2:4,3:2.8,4:3.4,5:1,6:2.2};
+var W_CUT={0:1,1:1,2:.4,3:.6,4:.5,5:1,6:.7};
+function wGain(p){return (W_GAIN[p.n]||1)*Math.sqrt(p.initial/60)}
+function wCut(p){return (W_CUT[p.n]||1)*(p.initial/60)}
+function spread(steps,amount,weight,cap){
+  var give=steps.map(function(){return 0}),left=Math.round(amount),guard=0;
+  function room(i){return cap?cap(steps[i])-give[i]:Infinity}
+  while(left>0&&guard++<30){
+    var act=[],ws=0,used=0;
+    steps.forEach(function(p,i){if(room(i)>0){act.push(i);ws+=weight(p)}});
+    if(!act.length||ws<=0)break;
+    act.forEach(function(i){var g=Math.min(room(i),Math.floor(left*weight(steps[i])/ws));give[i]+=g;used+=g});
+    if(!used){act.sort(function(x,y){return weight(steps[y])-weight(steps[x])});
+      for(var k=0;k<act.length&&used<left;k++){var g=Math.min(room(act[k]),left-used);give[act[k]]+=g;used+=g}}
+    left-=used;
+  }
+  return give;
+}
 function nextPhase(){
   var ph=S.phases[S.i];ph.used=elapsed();
   var over=Math.round(ph.used-ph.plan);
   /* Dépassement : retranché de l'étape suivante, puis des suivantes si besoin (plancher d'une minute). */
-  if(over>0){for(var j=S.i+1;j<S.phases.length&&over>0;j++){var room=Math.max(0,S.phases[j].plan-60),cut=Math.min(room,over);S.phases[j].plan-=cut;S.phases[j].adj=(S.phases[j].adj||0)-cut;over-=cut}}
+  var rest=S.phases.slice(S.i+1);
+  if(over>0&&rest.length){var cut=spread(rest,over,wCut,function(p){return Math.max(0,p.plan-60)});rest.forEach(function(p,k){p.plan-=cut[k];p.adj=(p.adj||0)-cut[k]})}
   /* Temps gagné : ajouté en totalité à l'étape suivante ; non utilisé, il passe à son tour à la suivante. */
-  else if(over<0&&S.i<S.phases.length-1){var nx=S.phases[S.i+1];nx.plan+=-over;nx.adj=(nx.adj||0)-over}
+  else if(over<0&&rest.length){var gn=spread(rest,-over,wGain,null);rest.forEach(function(p,k){p.plan+=gn[k];p.adj=(p.adj||0)+gn[k]})}
   if(S.i>=S.phases.length-1){S.ended=true;S.running=false;S.endedAt=Date.now();save("session",S);try{lock&&lock.release()}catch(e){}go("end");return}
   S.i++;S.acc=0;S.tStart=Date.now();S.running=true;S.rang=false;save("session",S);go("session");
 }
@@ -545,6 +570,7 @@ $app.addEventListener("input",function(ev){
   var t=ev.target;if(t.dataset.f){cfg.phases[editIdx][t.dataset.f]=t.value;save("cfg",cfg)}
 });
 $app.addEventListener("click",function(ev){
+  unlockAudio();
   var b=ev.target.closest("[data-a]");if(!b)return;var a=b.dataset.a,v=b.dataset.v;
   switch(a){
     case "total":cfg.total=+v;cfg.p0=P0DEF[cfg.total];if(cfg.total===45&&cfg.mode==="inclus")cfg.mode="sus";save("cfg",cfg);render();break;
