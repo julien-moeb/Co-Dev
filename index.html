@@ -214,7 +214,7 @@ var DITP={45:[5,14,4,14,3,5],60:[10,12,5,20,6,7],75:[10,20,5,20,10,10],90:[14,20
    45 min : réservée à un groupe pérenne ; l'inclusion a déjà eu lieu ou est comptée à part, jamais retranchée. */
 var DITP_C={60:[3,15,4,15,3,5],75:[10,12,5,20,6,7],90:[10,20,5,20,10,10],120:[14,20,8,25,8,15]};
 var P0DEF={45:15,60:15,75:15,90:15,120:30};
-var CFG_V=2;
+var CFG_V=2,APP_V="13 octobre 2026 (5)";
 var K="codev.v1.", $app=document.getElementById("app");
 var C=339.29;
 
@@ -307,8 +307,18 @@ var SPEC={
  signal:{dur:2.8,f:function(t){var g=t%0.95;if(g>0.8)return 0;var b=g%0.2;if(b>0.12)return 0;
    var env=Math.min(1,b/0.005,(0.12-b)/0.005),f=Math.floor(g/0.2)%2?1500:1000,w=2*Math.PI*f*t;return env*(Math.sin(w)+Math.sin(3*w)/3+Math.sin(5*w)/5)}}
 };
-/* Lecture par Web Audio : le contexte est déverrouillé au premier toucher, puis réutilisé.
-   Sur iOS, la session audio est déclarée en lecture pour ne pas dépendre du commutateur silencieux. */
+/* Lecture du son. Moyen principal : un lecteur audio par sonnerie, alimenté par un fichier WAV préchargé en mémoire.
+   Sur iPhone, un lecteur lancé une fois pendant un toucher reste autorisé ensuite, ce qui permet la sonnerie de fin d'étape.
+   Moyen de secours : Web Audio, si le lecteur refuse. */
+var EL={},BLOB={};
+function soundUrl(id){return "sounds/"+id+".wav"}
+function preloadSounds(){Object.keys(SPEC).forEach(function(id){
+  try{fetch(soundUrl(id)).then(function(r){if(!r.ok)throw 0;return r.blob()}).then(function(b){BLOB[id]=URL.createObjectURL(b);var a=EL[id];if(a&&!a.dataset.live){a.src=BLOB[id];a.load()}}).catch(function(){})}catch(e){}})}
+function el(id){
+  if(!EL[id]){var a=document.createElement("audio");a.preload="auto";a.setAttribute("playsinline","");a.src=BLOB[id]||soundUrl(id);document.body.appendChild(a);EL[id]=a}
+  return EL[id];
+}
+function diag(t){var d=document.getElementById("snd-diag");if(d)d.textContent=t}
 function ensureCtx(){
   if(!actx){var AC=window.AudioContext||window.webkitAudioContext;if(!AC)return null;
     try{if(navigator.audioSession)navigator.audioSession.type="playback"}catch(e){}
@@ -316,23 +326,35 @@ function ensureCtx(){
   if(actx.state!=="running"){try{actx.resume()}catch(e){}}
   return actx;
 }
-function unlockAudio(){
-  var c=ensureCtx();if(!c)return;
-  try{var s=c.createBufferSource();s.buffer=c.createBuffer(1,1,22050);s.connect(c.destination);s.start(0)}catch(e){}
-}
 function toneBuf(id){
-  id=SPEC[id]?id:"zen";if(BUF[id])return BUF[id];
+  if(BUF[id])return BUF[id];
   var sr=22050,sp=SPEC[id],n=Math.floor(sr*sp.dur),buf=actx.createBuffer(1,n,sr),d=buf.getChannelData(0),peak=0,i;
   for(i=0;i<n;i++){d[i]=sp.f(i/sr);var m=Math.abs(d[i]);if(m>peak)peak=m}
   var k=0.95/(peak||1);for(i=0;i<n;i++)d[i]*=k;
   return BUF[id]=buf;
 }
-function toneName(id){for(var i=0;i<TONES.length;i++)if(TONES[i].id===id)return TONES[i].n;return TONES[0].n}
-function ring(id){
-  var c=ensureCtx();if(!c)return;
-  var go=function(){try{var s=c.createBufferSource();s.buffer=toneBuf(id||cfg.tone);s.connect(c.destination);s.start(0)}catch(e){}};
+function waRing(id){
+  var c=ensureCtx();if(!c){diag("Ce navigateur ne permet pas de jouer le son.");return}
+  var go=function(){try{var s=c.createBufferSource();s.buffer=toneBuf(id);s.connect(c.destination);s.start(0)}catch(e){diag("Le son n’a pas pu être joué ("+(e.name||"erreur")+").")}};
   if(c.state==="running")go();else{try{c.resume().then(go,go)}catch(e){go()}}
 }
+function toneName(id){for(var i=0;i<TONES.length;i++)if(TONES[i].id===id)return TONES[i].n;return TONES[0].n}
+function ring(id){
+  id=SPEC[id]?id:(SPEC[cfg.tone]?cfg.tone:"zen");
+  var a=el(id);a.dataset.live="1";
+  try{a.pause()}catch(e){}
+  try{a.currentTime=0}catch(e){}
+  var p;try{p=a.play()}catch(e){p=null;waRing(id)}
+  if(p&&p.then)p.then(function(){diag("")},function(e){if(e&&e.name==="AbortError")return;diag("Lecteur audio refusé ("+(e&&e.name||"erreur")+"), lecture de secours.");waRing(id)});
+}
+/* Appelé à chaque toucher : autorise chaque lecteur (lancement puis arrêt immédiat, sans son audible) et le contexte Web Audio. */
+function unlockAudio(){
+  Object.keys(SPEC).forEach(function(id){var a=el(id);if(a.dataset.live)return;a.dataset.live="1";
+    try{var p=a.play();a.pause();a.currentTime=0;if(p&&p.catch)p.catch(function(){})}catch(e){}});
+  var c=ensureCtx();
+  if(c){try{var s=c.createBufferSource();s.buffer=c.createBuffer(1,1,22050);s.connect(c.destination);s.start(0)}catch(e){}}
+}
+preloadSounds();
 
 /* ---------- Écran allumé ---------- */
 var lock=null;
@@ -397,7 +419,7 @@ function vHome(){
     cfg.total===45?"Temps compté à part, en plus des 45 min de séance.":cfg.p0===P0DEF[cfg.total]?"Durée prévue par le référentiel DITP pour une séance de "+short(cfg.total)+".":"Le référentiel DITP prévoit "+P0DEF[cfg.total]+" min pour une séance de "+short(cfg.total)+(cfg.mode==="inclus"?" ; les étapes sont ajustées proportionnellement.":"."));
   h+=sec("Déroulé",group(plan.map(function(p){return row({lead:'<span class="num">'+(p.n||"·")+'</span>',label:esc(cfg.phases[p.n].t),trail:'<span class="val">'+p.min+' min</span>'})})
     .concat([row({cls:"total",label:"Total",trail:'<span class="val">'+fmtDur(sum)+'</span>'})])),"Fin prévue vers "+clockTime(end)+" si la séance commence maintenant.");
-  h+=sec("Sonnerie",group([sw("sound",cfg.sound,"Sonnerie en fin d’étape"),row({a:"testbell",label:'<span class="accent">Tester la sonnerie</span>',sub:toneName(cfg.tone)})]),"Ce réglage s’applique par défaut à chaque étape et reste modifiable en cours de séance.");
+  h+=sec("Sonnerie",group([sw("sound",cfg.sound,"Sonnerie en fin d’étape"),row({a:"testbell",label:'<span class="accent">Tester la sonnerie</span>',sub:toneName(cfg.tone)})]),"Ce réglage s’applique par défaut à chaque étape et reste modifiable en cours de séance.")+'<p class="sec-f bad" id="snd-diag"></p>';
   h+='</main>'+bar('<button class="cta" data-a="start">Lancer la séance</button>');
   return h;
 }
@@ -436,10 +458,10 @@ function vEnd(){
 function vSettings(){
   var h=nav({large:true,title:"Réglages",back:{a:"home",l:"Séance"}});
   h+='<main class="content"><h1 class="large">Réglages</h1>';
-  h+=sec("Sonnerie",group(TONES.map(function(t){return row({a:"tone",v:t.id,label:t.n,sub:t.d,trail:cfg.tone===t.id?IC.check:"",attrs:' role="radio" aria-checked="'+(cfg.tone===t.id)+'"'})})),"Touchez une sonnerie pour l’écouter et la choisir. Pensez à monter le volume du téléphone avant la séance.");
+  h+=sec("Sonnerie",group(TONES.map(function(t){return row({a:"tone",v:t.id,label:t.n,sub:t.d,trail:cfg.tone===t.id?IC.check:"",attrs:' role="radio" aria-checked="'+(cfg.tone===t.id)+'"'})})),"Touchez une sonnerie pour l’écouter et la choisir. Pensez à monter le volume du téléphone avant la séance.")+'<p class="sec-f bad" id="snd-diag"></p>';
   h+=sec("Contenus des étapes",group(cfg.phases.map(function(p,i){return row({a:"phase",v:i,lead:'<span class="num">'+(i||"·")+'</span>',label:esc(p.t),ell:true,trail:IC.chev})})),"Titre, enjeux et repères d’animation affichés pendant la séance.");
   h+=sec("Temps",group([row({a:"dist",label:"Répartition des temps",trail:IC.chev})]),"Durée de chaque étape, pour chaque durée de séance.");
-  h+=sec(null,group([row({a:"reset",cls:"center",label:'<span class="red">Rétablir les valeurs par défaut</span>'})]),"Contenus et durées issus du référentiel de la Direction interministérielle de la transformation publique (DITP) : support de formation des animateurs de groupe de codéveloppement, octobre 2026.");
+  h+=sec(null,group([row({a:"reset",cls:"center",label:'<span class="red">Rétablir les valeurs par défaut</span>'})]),"Contenus et durées issus du référentiel de la Direction interministérielle de la transformation publique (DITP) : support de formation des animateurs de groupe de codéveloppement, octobre 2026. Version de l’application : "+APP_V+".");
   return h+'</main>';
 }
 
@@ -570,15 +592,14 @@ $app.addEventListener("input",function(ev){
   var t=ev.target;if(t.dataset.f){cfg.phases[editIdx][t.dataset.f]=t.value;save("cfg",cfg)}
 });
 $app.addEventListener("click",function(ev){
-  unlockAudio();
-  var b=ev.target.closest("[data-a]");if(!b)return;var a=b.dataset.a,v=b.dataset.v;
+  var b=ev.target.closest("[data-a]");if(!b){unlockAudio();return}var a=b.dataset.a,v=b.dataset.v;
   switch(a){
     case "total":cfg.total=+v;cfg.p0=P0DEF[cfg.total];if(cfg.total===45&&cfg.mode==="inclus")cfg.mode="sus";save("cfg",cfg);render();break;
     case "mode":cfg.mode=v;save("cfg",cfg);render();break;
     case "p0":cfg.p0=+v;save("cfg",cfg);render();break;
     case "sound":cfg.sound=!cfg.sound;save("cfg",cfg);if(cfg.sound)unlockAudio();render();break;
-    case "testbell":case "bell":unlockAudio();ring();break;
-    case "tone":cfg.tone=v;save("cfg",cfg);unlockAudio();ring(v);render();break;
+    case "testbell":case "bell":ring();break;
+    case "tone":cfg.tone=v;save("cfg",cfg);ring(v);render();break;
     case "settings":go("settings");break;
     case "home":go("home");break;
     case "start":
@@ -601,6 +622,7 @@ $app.addEventListener("click",function(ev){
     case "reset":sheet({title:"Rétablir les valeurs par défaut ?",msg:"Vos titres, enjeux, repères et répartitions seront remplacés.",ok:"Rétablir",
       fn:function(){cfg.phases=JSON.parse(JSON.stringify(DEFAULT_PHASES));cfg.dist=defaultDist();cfg.distC=defaultDist(true);save("cfg",cfg);render()}});break;
   }
+  unlockAudio();
 });
 
 render();
