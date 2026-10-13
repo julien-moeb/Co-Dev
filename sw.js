@@ -1,6 +1,6 @@
 /* Fonctionnement hors connexion. La page est cherchée d'abord sur le réseau (mises à jour immédiates), avec repli sur la copie locale ;
    les autres fichiers sont servis depuis la copie locale. Les requêtes partielles (lecture audio) ne sont pas interceptées. */
-const CACHE = "codev-v5";
+const CACHE = "codev-v6";
 const FILES = ["./", "./index.html", "./manifest.webmanifest", "./icons/apple-touch-icon.png", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/icon-maskable-512.png",
   "./sounds/zen.wav", "./sounds/carillon.wav", "./sounds/clochette.wav", "./sounds/signal.wav"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES))); self.skipWaiting(); });

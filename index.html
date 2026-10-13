@@ -214,7 +214,7 @@ var DITP={45:[5,14,4,14,3,5],60:[10,12,5,20,6,7],75:[10,20,5,20,10,10],90:[14,20
    45 min : réservée à un groupe pérenne ; l'inclusion a déjà eu lieu ou est comptée à part, jamais retranchée. */
 var DITP_C={60:[3,15,4,15,3,5],75:[10,12,5,20,6,7],90:[10,20,5,20,10,10],120:[14,20,8,25,8,15]};
 var P0DEF={45:15,60:15,75:15,90:15,120:30};
-var CFG_V=2,APP_V="13 octobre 2026 (5)";
+var CFG_V=2,APP_V="13 octobre 2026 (6)";
 var K="codev.v1.", $app=document.getElementById("app");
 var C=339.29;
 
@@ -279,6 +279,15 @@ if(!cfg||cfg.v!==CFG_V){var old=cfg||{},tt=DUR.indexOf(old.total)>=0?old.total:9
 var S=load("session",null);
 if(S&&S.ended){S=null;drop("session")}
 if(!cfg.tone)cfg.tone="zen";
+if(!cfg.theme)cfg.theme="auto";
+/* Apparence : « auto » laisse le système décider ; « light » ou « dark » forcent le thème via l'attribut data-theme, déjà prévu dans les feuilles de style. */
+var themeSet=false;
+function applyTheme(){var r=document.documentElement;
+  if(cfg.theme==="light"||cfg.theme==="dark"){r.setAttribute("data-theme",cfg.theme);themeSet=true}
+  else if(themeSet){r.removeAttribute("data-theme");themeSet=false}
+  try{var m=document.querySelectorAll('meta[name="theme-color"]'),dark=cfg.theme==="dark"||(cfg.theme!=="light"&&matchMedia("(prefers-color-scheme: dark)").matches);
+    m.forEach(function(x){x.setAttribute("content",dark?"#050C0B":"#E8F0ED");if(cfg.theme!=="auto")x.removeAttribute("media")})}catch(e){}}
+applyTheme();
 if(cfg.total===45&&cfg.mode==="inclus")cfg.mode="sus";
 var view="home",editIdx=1,distDur=cfg.total,distMode="sans";
 
@@ -458,6 +467,8 @@ function vEnd(){
 function vSettings(){
   var h=nav({large:true,title:"Réglages",back:{a:"home",l:"Séance"}});
   h+='<main class="content"><h1 class="large">Réglages</h1>';
+  h+=sec("Apparence",seg("theme",[{v:"auto",l:"Système"},{v:"light",l:"Clair"},{v:"dark",l:"Sombre"}],cfg.theme),
+    cfg.theme==="auto"?"L’application suit le réglage clair ou sombre du téléphone.":"Thème "+(cfg.theme==="dark"?"sombre":"clair")+" imposé, quel que soit le réglage du téléphone.");
   h+=sec("Sonnerie",group(TONES.map(function(t){return row({a:"tone",v:t.id,label:t.n,sub:t.d,trail:cfg.tone===t.id?IC.check:"",attrs:' role="radio" aria-checked="'+(cfg.tone===t.id)+'"'})})),"Touchez une sonnerie pour l’écouter et la choisir. Pensez à monter le volume du téléphone avant la séance.")+'<p class="sec-f bad" id="snd-diag"></p>';
   h+=sec("Contenus des étapes",group(cfg.phases.map(function(p,i){return row({a:"phase",v:i,lead:'<span class="num">'+(i||"·")+'</span>',label:esc(p.t),ell:true,trail:IC.chev})})),"Titre, enjeux et repères d’animation affichés pendant la séance.");
   h+=sec("Temps",group([row({a:"dist",label:"Répartition des temps",trail:IC.chev})]),"Durée de chaque étape, pour chaque durée de séance.");
@@ -599,6 +610,7 @@ $app.addEventListener("click",function(ev){
     case "p0":cfg.p0=+v;save("cfg",cfg);render();break;
     case "sound":cfg.sound=!cfg.sound;save("cfg",cfg);if(cfg.sound)unlockAudio();render();break;
     case "testbell":case "bell":ring();break;
+    case "theme":cfg.theme=v;save("cfg",cfg);applyTheme();render();break;
     case "tone":cfg.tone=v;save("cfg",cfg);ring(v);render();break;
     case "settings":go("settings");break;
     case "home":go("home");break;
