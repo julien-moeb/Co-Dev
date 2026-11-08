@@ -1,0 +1,30 @@
+{
+  "name": "Codév Minuteur",
+  "short_name": "Codév",
+  "description": "Minuteur d'animation de séances de codéveloppement.",
+  "lang": "fr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#050C0B",
+  "theme_color": "#050C0B",
+  "icons": [
+    {
+      "src": "icons/dark-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/dark-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/dark-icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
