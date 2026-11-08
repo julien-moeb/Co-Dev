@@ -9,11 +9,10 @@
 <meta name="apple-mobile-web-app-title" content="Codév">
 <meta name="theme-color" content="#E8F0ED" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#050C0B" media="(prefers-color-scheme: dark)">
-<link rel="manifest" id="mf" href="manifest.webmanifest">
-<link rel="apple-touch-icon" id="ati" href="icons/apple-touch-icon.png">
-<script>/* Icône de l'écran d'accueil : version sombre si l'adresse contient ?icone=sombre (choix mémorisé dans Safari jusqu'à ?icone=clair). */
-(function(){try{var q=location.search.match(/[?&]icone=(sombre|clair)/),v=q?q[1]:localStorage.getItem("codev.icone");if(q)localStorage.setItem("codev.icone",v);
-if(v==="sombre"){document.getElementById("ati").href="icons/dark-apple-touch-icon.png";document.getElementById("mf").href="manifest-sombre.webmanifest"}}catch(e){}})();</script>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<script>/* Ancienne adresse ?icone=sombre : renvoi vers la page dédiée à l'icône sombre. */
+if(/[?&]icone=sombre/.test(location.search))location.replace("sombre/");</script>
 <link rel="icon" type="image/png" href="icons/icon-192.png">
 <style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;overscroll-behavior-y:none}img{max-width:100%}[hidden]{display:none!important}
 input,textarea{-webkit-user-select:text;user-select:text}body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}</style>
